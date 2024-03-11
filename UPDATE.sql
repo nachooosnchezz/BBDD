@@ -3,7 +3,8 @@ UPDATE student set zip=(select zip FROM zipcode where city like 'New Milford')
 where first_name like 'Fred';
 
 --Pasa grade_type a español--
-UPDATE GRADE_TYPE SET DESCRIPTION = CASE DESCRIPTION 
+UPDATE GRADE_TYPE SET DESCRIPTION = 
+CASE DESCRIPTION 
     WHEN 'Homework' THEN 'Deberes'
     WHEN 'Midterm' THEN 'Parcial'
     WHEN 'Participation' THEN 'Participacion'
@@ -68,10 +69,49 @@ UPDATE GRADE SET NUMERIC_GRADE = NUMERIC_GRADE * 0.9 WHERE NUMERIC_GRADE IN (
     AND LAST_NAME LIKE 'Schorin'
 );
 
+-- cambiar el prefijo de los telefonos si empieza por 6 o 7
+
+select * from clientes ;
+
+update clientes set telefono = 
+case when
+    telefono like '6%'
+    or telefono like '7%' 
+then '+34 ' || telefono
+else telefono
+end;
+
+update clientes set telefono = '+34 ' ;
+
+insert into gamasproductos (gama , descripciontexto)
+select gama || ' oferta', descripciontexto || ' (con tara)' from gamasproductos;
+
+---------------------------------------------
+
+insert into productos (codigoproducto, nombre,gama,proveedor,descripcion, cantidadenstock, precioventa ,precioproveedor)
+select 'ofer-' || codigoproducto, 'Oferta de ' || nombre, gama, proveedor, descripcion, cantidadenstock/2, precioventa/2 ,precioproveedor from productos
+where gama like 'Ornamentales' ;
+
+update productos set cantidadenstock = 
+case 
+     when cantidadenstock = 0 or cantidadenstock = 1 then 0
+     when mod(cantidadenstock,2) = 0 then cantidadenstock/2
+     when mod(cantidadenstock,2) = 1 then (cantidadenstock/2)-1    
+end
+where codigoproducto like 'OR-%';
 
 
 
 
+select * from productos;
+
+select * from productos where gama like 'Ornamentales' ;
+
+select * from gamasproductos;
+
+rollback;
+
+----------------------------------------------------------------------------
 
 
 
