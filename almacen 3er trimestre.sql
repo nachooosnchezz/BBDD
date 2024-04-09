@@ -38,10 +38,44 @@ select
     id_producto, 
     nombre 
 from productos ;
+/
+
+create or replace view V_EXISTENCIAS(
+    idproducto,
+    existencias,
+    ultimopreciocompra,
+    ultimoprecioventa
+)as
+select 
+    id_producto,
+    stock,
+    precioproveedor,
+    preciounidad 
+from productos;
+/
 
 --------------------------SECUENCIAS--------------------------------
 CREATE SEQUENCE nuevo_id_producto;
 
+
+--------------------------FUNCIONES---------------------------------
+create or replace function EXISTENCIAS_PRODUCTO(
+    p_idproducto IN number
+)return number as
+    v_stock number;
+begin
+    -- si no tiene entradas ni salidas devuelve 0
+    select stock into v_stock from productos where id_producto = p_idproducto;
+    if v_stock = 0 then
+        return 0;
+    end if;
+    
+    -- si no existe devuelve -1
+    if v_stock is null then
+        return -1;
+    end if;
+end;
+/
 -----------------------PROCEDIMIENTOS-------------------------------
 create or replace procedure CREAR_PRODUCTO (
     p_nombreproducto IN varchar, 
@@ -70,11 +104,25 @@ create or replace procedure ENTRADA_PRODUCTO(
 )
 as
     v_existe number;
+    v_producto productos%rowtype;
+    v_existe_stock number;
 begin
     -- verificar que existe el producto
     select count(*) into v_existe from productos where id_producto = p_idproducto;
     if v_existe = 0 or v_existe is null then
         raise_application_error(-20102, 'el producto ' || p_idproducto || 'no existe');
+    end if;
+    
+    -- almaceno el resultado de la funcion
+    v_existe_stock := existencias_producto(p_idproducto);
+    
+    -- si es 0 (que no hay entradas), el stock se queda como 0
+    if v_existe_stock = 0 then
+        update productos set stock = 0 where id_producto = p_idproducto;
+    end if;
+    -- si es 0 (que no existe ), el stock se queda como 0
+    if v_existe_stock is null then
+        update productos set stock = -1 where id_producto = p_idproducto;
     end if;
     
     --actualizar los datos
@@ -88,6 +136,8 @@ create or replace procedure SALIDA_PRODUCTO(
     p_preciocobradoporunidad IN number)
 as
     v_existe number;
+    v_producto productos%rowtype;
+    v_existe_stock number;
 begin
     -- verificar que existe el producto
     select count(*) into v_existe from productos where id_producto = p_idproducto;
@@ -95,9 +145,20 @@ begin
         raise_application_error(-20102, 'el producto ' || p_idproducto || 'no existe');
     end if;
     
-     --actualizar los datos
-    update productos set stock = stock - p_cantidad, precioventa = p_preciocobradoporunidad where id_producto = p_idproducto;
+    -- almaceno el resultado de la funcion
+    v_existe_stock := existencias_producto(p_idproducto);
     
+    -- si es 0 (que no hay entradas), el stock se queda como 0
+    if v_existe_stock = 0 then
+        update productos set stock = 0 where id_producto = p_idproducto;
+    end if;
+    -- si es 0 (que no existe ), el stock se queda como 0
+    if v_existe_stock is null then
+        update productos set stock = -1 where id_producto = p_idproducto;
+    end if;
+     
+    --actualizar los datos
+    update productos set stock = stock - p_cantidad, precioproveedor = p_preciocobradoporunidad where id_producto = p_idproducto;
 end;
 /
 
