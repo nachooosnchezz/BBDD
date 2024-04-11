@@ -1,32 +1,30 @@
 create table productos (
-    id_producto numeric primary key,
+    id_producto integer primary key,
     nombre varchar(30),
-    stock number,
-    precioproveedor numeric,
-    precioventa  numeric
+    stock number
 );
 /
-
-create table clientes (
-    id_cliente integer primary key,
-    nombre varchar(30)
-);
-/
-
-create table pedidos(
-    id_pedido integer primary key,
-    estado varchar(30),
-    id_cliente references clientes (id_cliente)
-);
-/
-
-create table detalle_pedidos(
-    id_detalle_pedidos integer primary key,
-    id_pedido references pedidos (id_pedido),
+ 
+ alter table productos  modify (id_producto integer);
+ 
+create table venta(
+    id_venta integer primary key,
     id_producto references productos (id_producto),
-    cantidad number
+    cantidad number (4),
+    precio_unidad numeric (5),
+    ultimo_precio_venta numeric (5)
+
 );
 /
+
+
+create table compra(
+    id_compra integer primary key,
+    id_producto references productos (id_producto),
+    cantidad number(4),
+    precio_proveedor numeric (5),
+    ultimo_precio_compra numeric (5)
+);
 
 
 ---------------------------VISTAS--------------------------------
@@ -35,10 +33,13 @@ create or replace view V_PRODUCTOS(
     idproducto
 )as 
 select 
-    id_producto, 
-    nombre 
+    nombre, 
+    id_producto
 from productos ;
 /
+
+
+select * from v_productos;
 
 create or replace view V_EXISTENCIAS(
     idproducto,
@@ -47,36 +48,38 @@ create or replace view V_EXISTENCIAS(
     ultimoprecioventa
 )as
 select 
-    id_producto,
-    stock,
-    precioproveedor,
-    preciounidad 
-from productos;
+    p.id_producto, p.stock, last(precio_proveedor), (c.cantidad * c.precio_proveedor)
+    from productos p
+    join compra c on c.id_producto = p.id_producto
+    join venta v on v.id_producto = p.id_producto
+;
 /
+select last(precio_proveedor) from compra;
+select * from v_existencias;
 
 --------------------------SECUENCIAS--------------------------------
 CREATE SEQUENCE nuevo_id_producto;
-
+create sequence nuevo_id_compra;
+create sequence nuevo_id_venta;
 
 --------------------------FUNCIONES---------------------------------
 create or replace function EXISTENCIAS_PRODUCTO(
     p_idproducto IN number
 )return number as
-    v_stock number;
+    v_existe number;
 begin
     -- si no tiene entradas ni salidas devuelve 0
-    select stock into v_stock from productos where id_producto = p_idproducto;
-    if v_stock = 0 then
-        return 0;
-    end if;
-    
-    -- si no existe devuelve -1
-    if v_stock is null then
+    select count(*) into v_existe from productos where id_producto = p_idproducto;
+    if v_existe = 0 OR v_existe is null then
         return -1;
+    end if;
+    if v_existe <> 0 or v_existe is not null then
+        return 0;
     end if;
 end;
 /
 -----------------------PROCEDIMIENTOS-------------------------------
+-- Ejercicio 2
 create or replace procedure CREAR_PRODUCTO (
     p_nombreproducto IN varchar, 
     p_idproducto OUT number
@@ -86,10 +89,13 @@ AS
 BEGIN
     --consigo el nuevo id
     p_idproducto := nuevo_id_producto.nextval ;
+    
     -- asigno el parametro con el nuevo id al tipo de dato
     v_producto.id_producto := p_idproducto ;
     -- nuevo nombre del producto 
     v_producto.nombre := p_nombreproducto ;
+    -- stock como 0
+    v_producto.stock := 0;
     
     --inserto los datos 
     insert into productos values v_producto;
@@ -97,68 +103,72 @@ END;
 /
 
 
+-- ejercicio 3
 create or replace procedure ENTRADA_PRODUCTO(
     p_idproducto IN number,
     p_cantidad IN number,
-    p_preciopagadoporunidad IN number
+    p_preciopagadoporunidad IN NUMERIC
 )
 as
-    v_existe number;
+    v_compra compra%rowtype;
     v_producto productos%rowtype;
     v_existe_stock number;
 begin
-    -- verificar que existe el producto
-    select count(*) into v_existe from productos where id_producto = p_idproducto;
-    if v_existe = 0 or v_existe is null then
-        raise_application_error(-20102, 'el producto ' || p_idproducto || 'no existe');
-    end if;
-    
     -- almaceno el resultado de la funcion
     v_existe_stock := existencias_producto(p_idproducto);
     
-    -- si es 0 (que no hay entradas), el stock se queda como 0
-    if v_existe_stock = 0 then
-        update productos set stock = 0 where id_producto = p_idproducto;
-    end if;
-    -- si es 0 (que no existe ), el stock se queda como 0
-    if v_existe_stock is null then
+    -- si devuelve -1 (que no existe o es null)
+    if v_existe_stock = -1 then
+        raise_application_error(-20102, 'el producto ' || p_idproducto || ' no existe o es nulo');
         update productos set stock = -1 where id_producto = p_idproducto;
     end if;
     
+    -- si devuelve 0 (existe)
+    if v_existe_stock = 0 then
+        update productos set stock = 0 where id_producto = p_idproducto;
+        v_compra.id_compra := nuevo_id_compra.nextval;
+        v_compra.id_producto := p_idproducto ;
+        v_compra.cantidad := p_cantidad ;
+        v_compra.precio_proveedor := p_preciopagadoporunidad ;
+        insert into compra values v_compra;
+    end if;
+    
     --actualizar los datos
-    update productos set stock = stock + p_cantidad, precioproveedor = p_preciopagadoporunidad where id_producto = p_idproducto;
+    update productos set stock = stock + p_cantidad where id_producto = p_idproducto;
 end;
 /
 
 create or replace procedure SALIDA_PRODUCTO(
     p_idproducto IN number,
     p_cantidad IN number,
-    p_preciocobradoporunidad IN number)
+    p_preciocobradoporunidad IN numeric)
 as
-    v_existe number;
+    v_venta venta%rowtype;
     v_producto productos%rowtype;
     v_existe_stock number;
 begin
-    -- verificar que existe el producto
-    select count(*) into v_existe from productos where id_producto = p_idproducto;
-    if v_existe = 0 or v_existe is null then
-        raise_application_error(-20102, 'el producto ' || p_idproducto || 'no existe');
-    end if;
-    
     -- almaceno el resultado de la funcion
     v_existe_stock := existencias_producto(p_idproducto);
     
-    -- si es 0 (que no hay entradas), el stock se queda como 0
-    if v_existe_stock = 0 then
-        update productos set stock = 0 where id_producto = p_idproducto;
-    end if;
-    -- si es 0 (que no existe ), el stock se queda como 0
-    if v_existe_stock is null then
+    -- si devuelve -1 (que no existe o es null)
+    if v_existe_stock = -1 then
+        raise_application_error(-20102, 'el producto ' || p_idproducto || ' no existe os es nulo');
         update productos set stock = -1 where id_producto = p_idproducto;
     end if;
-     
+    
+    
+    -- si devuelve 0 (existe)
+    if v_existe_stock = 0 then
+        update productos set stock = 0 where id_producto = p_idproducto;
+        v_venta.id_venta := nuevo_id_venta.nextval;
+        v_venta.id_producto := p_idproducto ;
+        v_venta.cantidad := p_cantidad ;
+        v_venta.precio_unidad := p_preciocobradoporunidad ;
+        insert into compra values v_venta;
+    end if;
+    
     --actualizar los datos
-    update productos set stock = stock - p_cantidad, precioproveedor = p_preciocobradoporunidad where id_producto = p_idproducto;
+    update productos set stock = stock - p_cantidad where id_producto = p_idproducto;
 end;
 /
 
