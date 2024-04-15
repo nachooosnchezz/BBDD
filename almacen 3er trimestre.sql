@@ -41,20 +41,27 @@ from productos ;
 
 select * from v_productos;
 
-create or replace view V_EXISTENCIAS(
+CREATE OR REPLACE VIEW V_EXISTENCIAS(
     idproducto,
     existencias,
     ultimopreciocompra,
     ultimoprecioventa
-)as
-select 
-    p.id_producto, p.stock, last(precio_proveedor), (c.cantidad * c.precio_proveedor)
-    from productos p
-    join compra c on c.id_producto = p.id_producto
-    join venta v on v.id_producto = p.id_producto
-;
-/
-select last(precio_proveedor) from compra;
+) AS
+SELECT 
+    p.id_producto,
+    COALESCE(p.stock, 0), -- Si p.stock es NULL, se reemplaza con 0
+    COALESCE((
+        SELECT MAX(c.precio_proveedor) 
+        FROM compra c 
+        WHERE c.id_producto = p.id_producto
+    ), NULL), -- Utilizamos COALESCE para establecer NULL si no hay registro de compra
+    COALESCE((
+        SELECT MAX(v.precio_unidad) 
+        FROM venta v 
+        WHERE v.id_producto = p.id_producto
+    ), NULL) -- Utilizamos COALESCE para establecer NULL si no hay registro de venta
+FROM productos p;
+
 select * from v_existencias;
 
 --------------------------SECUENCIAS--------------------------------
