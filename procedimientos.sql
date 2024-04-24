@@ -152,3 +152,161 @@ END;
 /
 
 select * from detallepedidos where codigopedido = 115;
+
+
+-- Devuelve el precio que el cliente tiene que pagar por el pedido
+
+create or replace procedure PRECIO_PEDIDO(
+    p_idpedido in integer
+)as
+    v_existe number;
+    v_producto number;
+begin
+    select count(*) into v_existe from pedidos where p_idpedido = codigopedido;
+    if v_existe = 0 or v_existe is null then
+        raise_application_error(-20005,'el pedido ' || p_idpedido || ' no existe');
+    end if;
+    
+    v_producto := PRECIO_DE_PEDIDO(p_idpedido);
+end;
+/
+
+create or replace function precio_de_pedido(p_idpedido in integer)
+return number
+as
+    v_precio number;
+begin
+    select (cantidad * preciounidad) into v_precio from detallepedidos where p_idpedido = codigopedido;
+    return v_precio;
+end;
+/
+
+declare
+    v_idpedido integer := 100;
+begin
+    PRECIO_PEDIDO(v_idpedido);
+end;
+/
+
+
+
+-- Crea un procedimiento almacenado que calcule el promedio de ventas en un mes determinado.
+
+create or replace procedure crear_cliente(
+    p_idcliente out number,
+    p_nombre varchar2,
+    p_telefono number
+)as
+    v_clientes clientes%rowtype;
+begin
+    p_idcliente := s_nuevo_id_cliente.nextval;
+    
+    v_clientes.codigocliente := p_idcliente;
+    v_clientes.nombrecliente := p_nombre ;
+    v_clientes.telefono := p_telefono ;
+    v_clientes.codigoempleadorepventas := 100000;
+    v_clientes.limitecredito := 0;
+    
+    insert into clientes values v_clientes;
+end;
+/
+
+create sequence s_nuevo_id_cliente start with 39;
+
+declare
+    v_idcliente number;
+begin
+    crear_cliente(v_idcliente,'Alfedro',601422411);
+end;
+/
+-- Escribe un procedimiento almacenado que calcule el total de compras de un cliente específico.
+
+create or replace procedure total_ventas_cliente(
+    p_idcliente number
+)as
+    v_total_ventas number;
+begin
+    select count(*) into v_total_ventas from pedidos where codigocliente = p_idcliente;
+    if v_total_ventas <> 0 then
+        dbms_output.put_line('El cliente ' || p_idcliente || ' ha realizado un total de ' || v_total_ventas || ' compras' );
+    else
+        raise_application_error(-20010,'El cliente no tiene ventas');
+    end if;
+    
+end;
+/
+
+
+
+declare 
+begin
+    TOTAL_VENTAS_CLIENTE(38);
+end;
+/
+
+
+-- crea un pedido rapido con una unidad de producto,el identificador del pedido se devuelve en un parameto de salida
+
+create or replace procedure ONE_CLICK_BUY(
+    p_idcliente number,
+    p_idproducto varchar2,
+    p_idpedido out number
+)as
+    v_existe_cliente number;
+    v_existe_producto number;
+    v_pedido pedidos%rowtype;
+    v_dp detallepedidos%rowtype;
+    v_numerolinea number;
+    v_precio_producto productos.precioventa%type;
+begin
+    p_idpedido := s_nueva_unidad_producto.nextval;
+    
+    select count(*) into v_existe_cliente from clientes where codigocliente = p_idcliente;
+    select count(*) into v_existe_producto from productos where codigoproducto = p_idproducto;
+    
+    if v_existe_cliente = 0 or v_existe_cliente is null then
+        raise_application_error(-20001,'El cliente no existe');
+    end if;
+    
+    if v_existe_producto = 0 or v_existe_producto is null then
+        raise_application_error(-20002, 'El producto no existe');
+    end if;
+    
+    -- insertar datos de pedido
+    v_pedido.codigopedido := p_idpedido;
+    v_pedido.fechapedido := sysdate ;
+    v_pedido.fechaesperada := sysdate + 7 ;
+    v_pedido.estado := 'Pendiente' ;
+    v_pedido.codigocliente := p_idcliente;
+    insert into pedidos values v_pedido;
+    
+    -- insertar datos en detallepedidos
+    select max(numerolinea) + 1 into v_numerolinea from detallepedidos where p_idpedido = codigopedido;
+    
+     if v_numerolinea is null then
+        v_numerolinea := 1;
+    end if;
+    
+    select precioventa into v_precio_producto from productos where codigoproducto = p_idproducto;
+    
+    v_dp.codigopedido := p_idpedido;
+    v_dp.codigoproducto := p_idproducto;
+    v_dp.cantidad := 1;
+    v_dp.preciounidad := v_precio_producto;
+    v_dp.numerolinea := v_numerolinea;
+    
+    insert into detallepedidos values v_dp;
+    
+    
+end;
+/
+
+create sequence s_nueva_unidad_producto start with 132;
+/
+
+declare
+    v_idpedido number;
+begin
+    ONE_CLICK_BUY(1,'AR-001',v_idpedido);
+end;
+/
