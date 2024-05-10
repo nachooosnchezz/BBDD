@@ -64,3 +64,107 @@ begin
 end;
 /
 
+
+-- Creamos la tabla T_SALDO
+create table T_SALDO (
+    saldo number(10,2)
+);
+
+-- Creamos el trigger para la tabla compra (entrada de productos)
+create or replace trigger TRIGGERENTRADA
+after insert on compra
+for each row
+begin
+    -- Actualizamos el saldo restando el dinero gastado en la compra
+    update T_SALDO set saldo = nvl(saldo, 0) - (:new.cantidad * :new.precio_proveedor);
+    -- Si no hay ninguna fila en T_SALDO, creamos una nueva fila con el saldo actualizado
+    if sql%notfound then
+        insert into T_SALDO values (:new.cantidad * :new.precio_proveedor * -1);
+    end if;
+end;
+/
+
+-- Creamos el trigger para la tabla venta (salida de productos)
+create or replace trigger TRIGGERSALIDA
+after insert on venta
+for each row
+begin
+    -- Actualizamos el saldo sumando el dinero obtenido por la venta
+    update T_SALDO set saldo = nvl(saldo, 0) + (:new.cantidad * :new.precio_unidad);
+    -- Si no hay ninguna fila en T_SALDO, creamos una nueva fila con el saldo actualizado
+    if sql%notfound then
+        insert into T_SALDO values (:new.cantidad * :new.precio_unidad);
+    end if;
+end;
+/
+
+    
+
+create or replace trigger INSERTAR_PRODUCTO_VISTA
+instead of INSERT on V_EXISTENCIAS
+for each row
+declare
+    v_idproducto number;
+begin
+    -- Verificamos si se proporciona un valor para NOMBREPRODUCTO
+    if :new.nombreproducto is null then
+        -- Si no se proporciona, lanzamos un error
+        raise_application_error(-20104, 'FALTANDATOS: Se requiere el nombre del producto.');
+    end if;
+
+    -- Si se proporciona un valor para IDPRODUCTO
+    if :new.idproducto is not null then
+        -- Verificamos si el IDPRODUCTO ya existe en la tabla de productos
+        select count(*) into v_idproducto from productos where id_producto = :new.idproducto;
+        if v_idproducto > 0 then
+            -- Si el IDPRODUCTO ya existe, lanzamos un error
+            raise_application_error(-20103, 'PRODUCTOYAEXISTE: El ID de producto ya está en uso.');
+        end if;
+    else
+        -- Si no se proporciona un valor para IDPRODUCTO, obtenemos uno nuevo de la secuencia
+        v_idproducto := nuevo_id_producto.nextval;
+        -- Verificamos si el IDPRODUCTO generado ya existe en la tabla de productos
+        while true loop
+            select count(*) into v_idproducto from productos where id_producto = v_idproducto;
+            exit when v_idproducto = 0;
+            v_idproducto := nuevo_id_producto.nextval;
+        end loop;
+    end if;
+
+    -- Insertamos el nuevo producto con los datos proporcionados
+    insert into productos (id_producto, nombre, stock) values (v_idproducto, :new.nombreproducto, :new.existencias);
+
+    -- Insertamos la entrada de producto con la cantidad indicada y el precio de compra indicado
+    insert into compra (id_compra, id_producto, cantidad, precio_proveedor) 
+    values (nuevo_id_compra.nextval, v_idproducto, :new.existencias, :new.ultimopreciocompra);
+end;
+/
+    
+    
+
+create or replace view V_EXISTENCIAS(
+    idproducto,
+    nombreproducto,
+    existencias,
+    ultimopreciocompra,
+    ultimoprecioventa
+) as
+select 
+    p.id_producto,
+    p.nombre,
+    COALESCE(p.stock, 0), -- Si p.stock es NULL, se reemplaza con 0
+    COALESCE((
+        SELECT c.precio_proveedor
+        FROM compra c 
+        WHERE c.id_producto = p.id_producto 
+        order by id_compra desc
+        fetch first row only
+    ), NULL), -- Utilizamos COALESCE para establecer NULL si no hay registro de compra
+    COALESCE((
+        SELECT v.precio_unidad
+        FROM venta v 
+        WHERE v.id_producto = p.id_producto
+        order by id_venta desc
+        fetch first row only
+    ), NULL) -- Utilizamos COALESCE para establecer NULL si no hay registro de venta
+FROM productos p;
