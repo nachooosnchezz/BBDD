@@ -11,7 +11,7 @@ drop table personas;
 
 --vistas
 
-create or replace view V_PERSONAS(
+create or replace EDITIONABLE view V_PERSONAS(
     idpersona,
     nombre,
     apellidos,
@@ -21,8 +21,9 @@ create or replace view V_PERSONAS(
     from personas
 );
 
+select * from V_PERSONAS;
 
-create or replace view V_PROGENITORES (
+create or replace EDITIONABLE view V_PROGENITORES (
     idpersona,
     nombremadre,
     apellidosmadre,
@@ -34,7 +35,118 @@ create or replace view V_PROGENITORES (
     join personas p on nvl(p.idpersona,0) = h.padre
 );
 
+
+
+
+create or replace view V_PROGENITORES (
+    idpersona,
+    idmadre,
+    nombremadre,
+    apellidosmadre,
+    idpadre,
+    nombrepadre,
+    apellidospadre
+)as(
+    select h.idpersona,m.idpersona, m.nombre, m.apellidos,p.idpersona, p.nombre, p.apellidos from personas h
+    left join personas m on nvl(m.idpersona,0) = h.madre
+    left join personas p on nvl(p.idpersona,0) = h.padre
+);
+
+
+
+
 select * from v_progenitores;
+
+
+
+create or replace trigger REGISTRO_PERSONA
+instead of insert on V_PERSONAS
+for each row
+declare 
+    v_existe number;
+begin
+    select count(*) into v_existe from personas where idpersona = :new.idpersona;
+    if v_existe <> 0 then
+        raise_application_error(-20001,'PERSONAYAEXISTE');
+    end if;
+    
+    if :new.idpersona is null then
+            raise_application_error(-20002,'IDNECESARIO');        
+        end if;
+
+    if :new.fallecida is null then
+        update v_personas set fallecida = 0 where idpersona = :new.idpersona;
+    end if;
+    
+    insert into personas (idpersona,nombre,apellidos,fallecido) values (:new.idpersona, :new.nombre, :new.apellidos, :new.fallecida);
+    
+end;
+/
+
+select * from v_personas;
+
+insert into v_personas (idpersona,nombre,apellidos) values (10,'Marta','sanchez lopez');
+
+create or replace function SIGUIENTE_IDPERSONA
+return numeric
+as
+begin
+    
+end;
+/
+
+create sequence secuencia_idpersona START WITH 1 INCREMENT BY 1;
+
+
+
+
+
+create or replace trigger AFILIACION_PERSONAS 
+instead of update on v_progenitores
+for each row
+declare
+    v_nombre_comun number;
+    v_idmadre number;
+begin
+    if :new.nombremadre is null then
+        update personas set madre = null where idpersona = :new.idpersona;
+    end if;
+    
+    if :new.nombrepadre is null then
+        update personas set padre = null where idpersona = :new.idpersona;
+    end if;
+    
+    select madre into v_idmadre from personas where idpersona = :new.idpersona;
+    if :new.nombremadre is not null then
+        select count(*) into v_nombre_comun from personas where nombre = :new.nombremadre;
+        if v_nombre_comun = 1 then
+            update personas set madre = v_idmadre where idpersona = :new.idpersona;
+        end if;
+    end if;
+end;
+/
+
+insert into
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -- secuencias
 
 create sequence nuevo_id_persona start with 4;
