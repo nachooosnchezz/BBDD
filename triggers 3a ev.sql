@@ -199,3 +199,33 @@ end;
 /
 
 
+create or replace trigger modificar_cliente
+instead of update on todos_clientes
+for each row
+declare
+    v_idcliente number;
+    v_secuencia number;
+begin
+    if :new.idcliente = :old.idcliente then
+        RAISE_APPLICATION_ERROR(-20003,'INMUTABLE');
+    end if;
+    if :new.nombrecliente = :old.nombrecliente then
+        RAISE_APPLICATION_ERROR(-20004,'INMUTABLE');
+    end if;
+    loop 
+        v_idcliente := nuevoidcliente.nextval;
+        select count(*) into v_secuencia from cen_clientes where idcliente = v_idcliente;
+        exit when v_secuencia = 0;
+    end loop;
+    if :new.localizacion = 'S' or :old.localizacion = 'C' then
+        insert into t_suc_clientes@sucursal_central values (v_idcliente, :new.nombrecliente);
+        delete from t_cen_clientes where idcliente = :new.idcliente and nombrecliente = :NEW.nombrecliente;
+    end if;
+    
+     if :new.localizacion = 'C' or :old.localizacion = 'S' then
+        insert into t_cen_clientes values (v_idcliente, :new.nombrecliente);
+        delete from t_suc_clientes@sucursal_central where idcliente = :new.idcliente and nombrecliente = :NEW.nombrecliente;
+
+    end if;
+end;
+/
