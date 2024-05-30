@@ -242,3 +242,25 @@ if :old.localizacion = 'S' then
 end if;
 end;
 /
+
+
+
+create or replace NONEDITIONABLE trigger t_crearclientes
+instead of insert on cen_clientes
+for each row
+declare
+    v_idcliente number;
+    v_secuencia number;
+begin
+    if :new.idcliente is not NULL then
+        RAISE_APPLICATION_ERROR(-20001,'SOBRANDATOS');
+    end if;
+
+    loop
+        v_idcliente := nuevoidcliente.nextval;
+        select count(*) into v_secuencia from t_cen_clientes where idcliente = v_idcliente;
+        exit when v_secuencia = 0;
+    end loop;
+
+    insert into t_cen_clientes(idcliente,nombrecliente) values (v_idcliente,:new.nombrecliente);
+end;
