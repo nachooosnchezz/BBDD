@@ -168,3 +168,34 @@ select
         fetch first row only
     ), NULL) -- Utilizamos COALESCE para establecer NULL si no hay registro de venta
 FROM productos p;
+
+
+
+create or replace trigger crear_todos_clientes
+instead of insert on todos_clientes
+for each row
+declare
+    v_idcliente number;
+    v_secuencia number;
+begin
+    if :new.idcliente is not null then
+        RAISE_APPLICATION_ERROR(-20002,'SOBRANDATOS');
+    end if;
+    
+    loop 
+        v_idcliente := nuevoidcliente.nextval;
+        select count(*) into v_secuencia from cen_clientes where idcliente = v_idcliente;
+        exit when v_secuencia = 0;
+    end loop;
+    
+    if :new.localizacion = 'C' then
+        insert into t_cen_clientes values (v_idcliente, :new.nombrecliente);
+    end if;
+    
+    if :new.localizacion = 'S' then
+        insert into t_suc_clientes@sucursal_central values (v_idcliente, :new.nombrecliente);
+    end if;
+end;
+/
+
+
