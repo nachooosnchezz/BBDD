@@ -229,3 +229,16 @@ begin
     end if;
 end;
 /
+create or replace trigger borrar_clientes
+instead of delete on todos_clientes
+for each row
+declare
+begin
+if :old.localizacion = 'C' then 
+    delete from t_cen_clientes where idcliente = :old.idcliente and nombrecliente = :old.nombrecliente;
+end if;
+if :old.localizacion = 'S' then 
+    delete from t_suc_clientes@sucursal_central where idcliente = :old.idcliente and nombrecliente = :old.nombrecliente;
+end if;
+end;
+/
